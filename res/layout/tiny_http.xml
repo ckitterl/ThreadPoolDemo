@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical" >
+
+    <Button
+        android:id="@+id/add_id"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="增加一个带id的任务" />
+
+    <Button
+        android:id="@+id/add"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="增加一个任务" />
+
+    <Button
+        android:id="@+id/stop_all"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="全部停止" />
+
+    <Button
+        android:id="@+id/stop_id"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="停止指定id" />
+
+</LinearLayout>
