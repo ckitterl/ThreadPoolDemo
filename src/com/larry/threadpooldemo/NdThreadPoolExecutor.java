@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 import android.util.Log;
 
@@ -18,6 +19,9 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 	private boolean mIsDebug = true;
 	private long mTimeout = 0;
 	private static final String TAG = "NdThreadPoolExecutor";
+
+	// 要进入待执行队列或者执行队列查找或者执行取消操作，要先锁。
+	private ReentrantLock mLock = new ReentrantLock();
 
 	private ConcurrentLinkedQueue<NdAbstractTask> mQueueRunningTask = new ConcurrentLinkedQueue<NdAbstractTask>();
 
@@ -47,11 +51,11 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 				timer.cancel();
 			}
 
-			synchronized (NdThreadPoolExecutor.this) {
-				mQueueRunningTask.remove(nr);
-				nr.setState(State.FINISHED);
-				nr.setCurrentThread(null);
-			}
+			mLock.lock();
+			mQueueRunningTask.remove(nr);
+			nr.setState(State.FINISHED);
+			nr.setCurrentThread(null);
+			mLock.unlock();
 		}
 	}
 
@@ -75,22 +79,20 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 
 					@Override
 					public void run() {
-						Log.d(TAG,
-								"thread："
-										+ timeT.getName()
-										+ " timeout and should be interrupt, task id: "
-										+ nr.getId());
+						Log.d(TAG, "thread：" + timeT.getName()
+								+ " timeout and should be interrupt, task id: "
+								+ nr.getId());
 						// timeT.interrupt();
 					}
 				}, mTimeout);
 				nr.setTimer(timeOutTimer);
 			}
 
-			synchronized (NdThreadPoolExecutor.this) {
-				mQueueRunningTask.add(nr);
-				nr.setState(State.COMMITTED);
-				nr.setCurrentThread(t);
-			}
+			mLock.lock();
+			mQueueRunningTask.add(nr);
+			nr.setState(State.COMMITTED);
+			nr.setCurrentThread(t);
+			mLock.unlock();
 		}
 
 		super.beforeExecute(t, r);
@@ -128,11 +130,13 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 	 *            指定要被查询的任务，id必须是预定义好的
 	 * @return
 	 */
-	public ArrayList<NdAbstractTask> getTaskListState(int id) {
+	public ArrayList<NdAbstractTask> getTaskListState(ETaskTypeId id) {
 		ArrayList<NdAbstractTask> result = new ArrayList<NdAbstractTask>();
-		if (id == 0) {
+		if (id == null) {
 			return null;
 		}
+
+		mLock.lock();
 		// 先去待执行队列中查找
 		BlockingQueue<Runnable> stagedQueue = getQueue();
 		for (Runnable r : stagedQueue) {
@@ -143,14 +147,13 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 		}
 
 		// 再去正在执行的队列中查找
-		synchronized (this) {
-			for (NdAbstractTask r : mQueueRunningTask) {
-				if (r.getId() == id) {
-					result.add(r);
-				}
+		for (NdAbstractTask r : mQueueRunningTask) {
+			if (r.getId() == id) {
+				result.add(r);
 			}
-
 		}
+
+		mLock.unlock();
 		return result;
 	}
 
@@ -158,9 +161,15 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 	 * 从队列中删除用id指定的任务，
 	 * 
 	 * @param id
-	 *            指定要被删除的任务，id必须是预定义好的
+	 *            指定要被删除的任务,对于删除的控制有两个地方会出现同步的错误 1.在新增任务的时候，没有锁，所以在删除的时候是有可能不会删除
+	 *            正在新增的任务（尽管这个任务符合被删除的条件） 2.在任务由暂存态转到运行态的时候，会由暂存队列转移到运行队列
+	 *            这时候也是没有做同步控制的，会造成无法删除这个任务
 	 */
-	public void removeById(int id) {
+	public void removeById(ETaskTypeId id) {
+		if (id == null) {
+			return;
+		}
+		mLock.lock();
 		// 删除待等待执行队列
 		BlockingQueue<Runnable> stagedQueue = getQueue();
 		Iterator<Runnable> i = stagedQueue.iterator();
@@ -175,15 +184,15 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 		}
 
 		// 删除正在执行中的任务
-		synchronized (this) {
-			for (NdAbstractTask task : mQueueRunningTask) {
-				if (task.getId() == id && task.getCurrentThread() != null) {
-					Log.d(TAG, task.getName() + " cancel by id: "
-							+ id + ", state: " + task.getState());
-					task.getCurrentThread().interrupt();
-				}
+		for (NdAbstractTask task : mQueueRunningTask) {
+			if (task.getId() == id && task.getCurrentThread() != null) {
+				Log.d(TAG, task.getName() + " cancel by id: " + id
+						+ ", state: " + task.getState());
+				task.getCurrentThread().interrupt();
 			}
 		}
+
+		mLock.unlock();
 	}
 
 	/**

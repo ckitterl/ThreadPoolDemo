@@ -656,15 +656,13 @@ public abstract class NdTinyHttpAsyncTask<Params, Progress, Result> {
         }
     }
 
-	public static void stopTaskById(int id) {
-		//TODO check id
-		
+	public static void stopTaskById(ETaskTypeId id) {
 		if (sDefaultExecutor instanceof NdThreadPoolExecutor) {
 			((NdThreadPoolExecutor)sDefaultExecutor).removeById(id);
 		}
 	}
 	
-	public void setId(int id) {
+	public void setId(ETaskTypeId id) {
 		((NdAbstractTask)mFuture).setId(id);
 	}
 	

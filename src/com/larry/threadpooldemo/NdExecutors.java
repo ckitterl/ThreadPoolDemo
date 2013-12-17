@@ -23,7 +23,7 @@ public class NdExecutors {
 	private static NdThreadPoolExecutor sCachedThreadPool; // 本地缓存数据请求线程池
 	private static NdThreadPoolExecutor sFileUploadDownloadThreadPool; // 文件上传下载操作线程池
 	private static NdThreadPoolExecutor sBackgroundThreadPool; // 后台数据同步线程池
-	private static PriorityBlockingQueue<Runnable> sNormalWorkQueue = new PriorityBlockingQueue<Runnable>();
+	private static PriorityBlockingQueue<Runnable> sNormalWorkQueue = new PriorityBlockingQueue<Runnable>(64);
 
 	/*
 	 * 停止接受新的请求，等待任务执行完成的超时时间，单位ms. 具体查询 {@link #shutdown shutdown}.
@@ -163,7 +163,7 @@ public class NdExecutors {
 	 * 
 	 * @return tiemout参数暂时没用
 	 */
-	public static boolean awaitQuit(long timeout) {
+	public synchronized static boolean awaitQuit(long timeout) {
 
 		// 两种方式-轮询or阻塞。这里采用轮询的方式，减少线程数量以及线程之间的通信，
 		// 减少代码复杂度

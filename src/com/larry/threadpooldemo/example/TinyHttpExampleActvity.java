@@ -6,11 +6,10 @@ import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
 
+import com.larry.threadpooldemo.ETaskTypeId;
 import com.larry.threadpooldemo.NdExecutors;
-import com.larry.threadpooldemo.NdThreadPoolExecutor;
 import com.larry.threadpooldemo.NdTinyHttpAsyncTask;
 import com.larry.threadpooldemo.R;
-import com.larry.threadpooldemo.TaskClassId;
 
 public class TinyHttpExampleActvity extends Activity implements OnClickListener {
 	private static final String TAG = "TinyHttpExampleActvity";
@@ -35,7 +34,7 @@ public class TinyHttpExampleActvity extends Activity implements OnClickListener 
 					Thread.sleep(params[0]);
 				}
 			} catch (InterruptedException e) {
-				Log.d(TAG, getTaskName() + " stop by user");
+				Log.d(TAG, getTaskName() + " stop by user"); // 线程设置执行中断信号，直接退出
 			}
 			return null;
 		}
@@ -43,7 +42,6 @@ public class TinyHttpExampleActvity extends Activity implements OnClickListener 
 
 	@Override
 	public void onClick(View v) {
-		int id = v.getId();
 		switch (v.getId()) {
 		case R.id.add:
 			getTask(false).execute(1000L);
@@ -52,7 +50,7 @@ public class TinyHttpExampleActvity extends Activity implements OnClickListener 
 			getTask(true).execute(1000L);
 			break;
 		case R.id.stop_id:
-			NdTinyHttpAsyncTask.stopTaskById(TaskClassId.TEST_ID);
+			NdTinyHttpAsyncTask.stopTaskById(ETaskTypeId.TEST);
 			break;
 		case R.id.stop_all:
 			NdExecutors.awaitQuit(0);
@@ -63,7 +61,7 @@ public class TinyHttpExampleActvity extends Activity implements OnClickListener 
 	private DoSomethingTask getTask(boolean withId) {
 		DoSomethingTask asyncTask = new DoSomethingTask();
 		if (withId) {
-			asyncTask.setId(TaskClassId.TEST_ID);
+			asyncTask.setId(ETaskTypeId.TEST);
 		}
 		return asyncTask;
 	}

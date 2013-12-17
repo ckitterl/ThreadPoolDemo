@@ -16,7 +16,7 @@ public abstract class NdAbstractTask implements Runnable, Comparable<NdAbstractT
 	private int mPriority = DEFAULT_PRIORITY;
 	private State mState = State.STAGED;
 	
-	private int mId = 0;
+	private ETaskTypeId mId;
 	private String mName;
 	private Thread mCurrentThread;
 	
@@ -28,7 +28,7 @@ public abstract class NdAbstractTask implements Runnable, Comparable<NdAbstractT
 		COMMITTED,
 		FINISHED
 	}
-
+	
 	@Override
 	public abstract void run(); 
 	
@@ -62,7 +62,7 @@ public abstract class NdAbstractTask implements Runnable, Comparable<NdAbstractT
 	 * 如果返回0，将无法对这个Runner执行查询、停止操作
 	 * @return
 	 */
-	public int getId() {
+	public ETaskTypeId getId() {
 		return mId;
 	}
 	
@@ -72,7 +72,7 @@ public abstract class NdAbstractTask implements Runnable, Comparable<NdAbstractT
 	 * 
 	 * @param id
 	 */
-	public void setId(int id) {
+	public void setId(ETaskTypeId id) {
 		mId = id;
 	}
 	
