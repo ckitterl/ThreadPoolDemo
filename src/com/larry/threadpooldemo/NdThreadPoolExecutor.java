@@ -6,6 +6,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +22,7 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 	private static final String TAG = "NdThreadPoolExecutor";
 
 	// 要进入待执行队列或者执行队列查找或者执行取消操作，要先锁。
-	private ReentrantLock mLock = new ReentrantLock();
+	static Object sLock = new Object();
 
 	private ConcurrentLinkedQueue<NdAbstractTask> mQueueRunningTask = new ConcurrentLinkedQueue<NdAbstractTask>();
 
@@ -51,11 +52,11 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 				timer.cancel();
 			}
 
-			mLock.lock();
-			mQueueRunningTask.remove(nr);
-			nr.setState(State.FINISHED);
-			nr.setCurrentThread(null);
-			mLock.unlock();
+			synchronized (sLock) {
+				mQueueRunningTask.remove(nr);
+				nr.setState(State.FINISHED);
+				nr.setCurrentThread(null);
+			}
 		}
 	}
 
@@ -88,11 +89,11 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 				nr.setTimer(timeOutTimer);
 			}
 
-			mLock.lock();
-			mQueueRunningTask.add(nr);
-			nr.setState(State.COMMITTED);
-			nr.setCurrentThread(t);
-			mLock.unlock();
+			synchronized (sLock) {
+				mQueueRunningTask.add(nr);
+				nr.setState(State.COMMITTED);
+				nr.setCurrentThread(t);
+			}
 		}
 
 		super.beforeExecute(t, r);
@@ -136,24 +137,24 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 			return null;
 		}
 
-		mLock.lock();
-		// 先去待执行队列中查找
-		BlockingQueue<Runnable> stagedQueue = getQueue();
-		for (Runnable r : stagedQueue) {
-			if (r instanceof NdAbstractTask
-					&& ((NdAbstractTask) r).getId() == id) {
-				result.add((NdAbstractTask) r);
+		synchronized (sLock) {
+			// 先去待执行队列中查找
+			BlockingQueue<Runnable> stagedQueue = getQueue();
+			for (Runnable r : stagedQueue) {
+				if (r instanceof NdAbstractTask
+						&& ((NdAbstractTask) r).getId() == id) {
+					result.add((NdAbstractTask) r);
+				}
+			}
+
+			// 再去正在执行的队列中查找
+			for (NdAbstractTask r : mQueueRunningTask) {
+				if (r.getId() == id) {
+					result.add(r);
+				}
 			}
 		}
 
-		// 再去正在执行的队列中查找
-		for (NdAbstractTask r : mQueueRunningTask) {
-			if (r.getId() == id) {
-				result.add(r);
-			}
-		}
-
-		mLock.unlock();
 		return result;
 	}
 
@@ -169,30 +170,29 @@ public class NdThreadPoolExecutor extends ThreadPoolExecutor {
 		if (id == null) {
 			return;
 		}
-		mLock.lock();
-		// 删除待等待执行队列
-		BlockingQueue<Runnable> stagedQueue = getQueue();
-		Iterator<Runnable> i = stagedQueue.iterator();
-		while (i.hasNext()) {
-			Runnable r = i.next();
-			if (r instanceof NdAbstractTask
-					&& ((NdAbstractTask) r).getId() == id) {
-				Log.d(TAG, ((NdAbstractTask) r).getName() + " cancel by id: "
-						+ id + ", state: STAGE");
-				i.remove();
+		synchronized (sLock) {
+			// 删除待等待执行队列
+			BlockingQueue<Runnable> stagedQueue = getQueue();
+			Iterator<Runnable> i = stagedQueue.iterator();
+			while (i.hasNext()) {
+				Runnable r = i.next();
+				if (r instanceof NdAbstractTask
+						&& ((NdAbstractTask) r).getId() == id) {
+					Log.d(TAG, ((NdAbstractTask) r).getName()
+							+ " cancel by id: " + id + ", state: STAGE");
+					i.remove();
+				}
+			}
+
+			// 删除正在执行中的任务
+			for (NdAbstractTask task : mQueueRunningTask) {
+				if (task.getId() == id && task.getCurrentThread() != null) {
+					Log.d(TAG, task.getName() + " cancel by id: " + id
+							+ ", state: " + task.getState());
+					task.getCurrentThread().interrupt();
+				}
 			}
 		}
-
-		// 删除正在执行中的任务
-		for (NdAbstractTask task : mQueueRunningTask) {
-			if (task.getId() == id && task.getCurrentThread() != null) {
-				Log.d(TAG, task.getName() + " cancel by id: " + id
-						+ ", state: " + task.getState());
-				task.getCurrentThread().interrupt();
-			}
-		}
-
-		mLock.unlock();
 	}
 
 	/**

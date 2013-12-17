@@ -1,6 +1,7 @@
 package com.larry.threadpooldemo;
 
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
@@ -23,7 +24,11 @@ public class NdExecutors {
 	private static NdThreadPoolExecutor sCachedThreadPool; // 本地缓存数据请求线程池
 	private static NdThreadPoolExecutor sFileUploadDownloadThreadPool; // 文件上传下载操作线程池
 	private static NdThreadPoolExecutor sBackgroundThreadPool; // 后台数据同步线程池
-	private static PriorityBlockingQueue<Runnable> sNormalWorkQueue = new PriorityBlockingQueue<Runnable>(64);
+	private static NdSynchronousQueue<Runnable> sCacheWorkQueue = new NdSynchronousQueue<Runnable>();
+	private static NdPriorityBlockingQueue<Runnable> sTinyHttplWorkQueue = new NdPriorityBlockingQueue<Runnable>(
+			64);
+	private static NdArrayBlockQueue<Runnable> sArrayBlockWorkQueue = new NdArrayBlockQueue<Runnable>(
+			128);
 
 	/*
 	 * 停止接受新的请求，等待任务执行完成的超时时间，单位ms. 具体查询 {@link #shutdown shutdown}.
@@ -39,13 +44,15 @@ public class NdExecutors {
 	private static final long TINY_HTTP_THREAD_POOL_TIMEOUT = 6000; // unit:ms
 	// 本地cache操作的超时时间，如果是超过预定时间，将停止其操作
 	private static final long CACHE_THREAD_POOL_TIMEOUT = 1000; // unit:ms
-	
+
 	public synchronized static void init() {
-		if (sTinyHttpThreadPool != null || sCachedThreadPool != null 
-				|| sFileUploadDownloadThreadPool != null || sBackgroundThreadPool != null) {
-			throw new IllegalStateException("Thread pool have already been initialized");
+		if (sTinyHttpThreadPool != null || sCachedThreadPool != null
+				|| sFileUploadDownloadThreadPool != null
+				|| sBackgroundThreadPool != null) {
+			throw new IllegalStateException(
+					"Thread pool have already been initialized");
 		}
-		getCachedThreadPool(); 
+		getCachedThreadPool();
 		getTinyHttpThreadPool();
 		getFileUploadDownloadThreadPool();
 		getBackgroundThreadPool();
@@ -58,7 +65,7 @@ public class NdExecutors {
 	public synchronized static ExecutorService getCachedThreadPool() {
 		if (sCachedThreadPool == null || sCachedThreadPool.isShutdown()) {
 			sCachedThreadPool = new NdThreadPoolExecutor(0, Integer.MAX_VALUE,
-					60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
+					60L, TimeUnit.SECONDS, sCacheWorkQueue,
 					NdThreadFactory.newCachedThreadFactory());
 			sCachedThreadPool.setThreadTimeout(CACHE_THREAD_POOL_TIMEOUT);
 		}
@@ -73,7 +80,7 @@ public class NdExecutors {
 	public synchronized static ExecutorService getTinyHttpThreadPool() {
 		if (sTinyHttpThreadPool == null || sTinyHttpThreadPool.isShutdown()) {
 			sTinyHttpThreadPool = new NdThreadPoolExecutor(2, 12, 0,
-					TimeUnit.SECONDS, sNormalWorkQueue,
+					TimeUnit.SECONDS, sTinyHttplWorkQueue,
 					NdThreadFactory.newTinyHttpThreadFactory());
 			sTinyHttpThreadPool.setThreadTimeout(TINY_HTTP_THREAD_POOL_TIMEOUT);
 		}
@@ -90,7 +97,7 @@ public class NdExecutors {
 				|| sFileUploadDownloadThreadPool.isShutdown()) {
 			// TODO 是否需要对上传下载队列大小做限制？
 			sFileUploadDownloadThreadPool = new NdThreadPoolExecutor(1, 1, 0,
-					TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(128),
+					TimeUnit.SECONDS, sArrayBlockWorkQueue,
 					NdThreadFactory.newUploadDownloadThreadFactory());
 		}
 		return sFileUploadDownloadThreadPool;
@@ -103,7 +110,7 @@ public class NdExecutors {
 		if (sBackgroundThreadPool == null || sBackgroundThreadPool.isShutdown()) {
 			// TODO 是否需要对上传下载队列大小做限制？
 			sBackgroundThreadPool = new NdThreadPoolExecutor(1, 1, 0,
-					TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(128),
+					TimeUnit.SECONDS, sArrayBlockWorkQueue,
 					NdThreadFactory.newBackgroundThreadFactory());
 		}
 		return sBackgroundThreadPool;
@@ -137,8 +144,7 @@ public class NdExecutors {
 		}
 
 		public static NdThreadFactory newTinyHttpThreadFactory() {
-			return new NdThreadFactory(Thread.NORM_PRIORITY,
-					"tiny_http");
+			return new NdThreadFactory(Thread.NORM_PRIORITY, "tiny_http");
 		}
 
 		public static NdThreadFactory newCachedThreadFactory() {
@@ -204,7 +210,6 @@ public class NdExecutors {
 				return true;
 			}
 		}
-		
 
 		return checkAndLog();
 	}
@@ -248,13 +253,13 @@ public class NdExecutors {
 				&& sFileUploadDownloadThreadPool.isTerminated()
 				&& sBackgroundThreadPool.isTerminated();
 	}
-	
+
 	private static boolean checkAndLog() {
 		return sTinyHttpThreadPool.checkTerminatedAndLog()
 				&& sCachedThreadPool.checkTerminatedAndLog()
 				&& sFileUploadDownloadThreadPool.checkTerminatedAndLog()
 				&& sBackgroundThreadPool.checkTerminatedAndLog();
-		
+
 	}
 
 	/**
